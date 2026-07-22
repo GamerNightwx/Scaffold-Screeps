@@ -4,12 +4,26 @@
   "private": true,
   "description": "Screeps bot for World, Season, and private servers.",
   "license": "MIT",
+  "type": "module",
   "scripts": {
-    "build": "esbuild src/main.js --bundle --platform=node --format=cjs --outfile=dist/main.js",
-    "check": "node --check src/main.js && node --check dist/main.js",
-    "test": "npm run check"
+    "build": "rollup -c",
+    "watch": "rollup -c -w",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "lint": "eslint src/ tests/ --max-warnings 10",
+    "lint:fix": "eslint src/ tests/ --fix",
+    "check": "npm run lint && npm run test",
+    "upload": "node upload.js",
+    "upload:local": "node upload.js --host 127.0.0.1 --port 21025",
+    "dev": "npm run watch"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "@eslint/js": "^10.0.1",
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "eslint": "^8.56.0",
+    "rollup": "^4.62.2",
+    "vite": "^5.0.10",
+    "vitest": "^4.1.10"
   }
 }
