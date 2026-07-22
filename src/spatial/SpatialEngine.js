@@ -257,6 +257,17 @@ export default class SpatialEngine {
     };
   }
 
+  /**
+   * Get approximate traffic metric for a room (used by Scheduler)
+   * @param {string} roomName
+   * @returns {number}
+   */
+  getTraffic(roomName) {
+    // Placeholder: no traffic tracking implemented yet
+    // Returns 0 for no traffic
+    return 0;
+  }
+
   // ===== PRIVATE METHODS =====
 
   /**
