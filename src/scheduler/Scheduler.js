@@ -98,7 +98,15 @@ export default class Scheduler {
           if (spatial && target && typeof spatial.getTraffic === 'function') {
             try { traffic = spatial.getTraffic(target.roomName) || 0; } catch (e) { traffic = 0; }
           }
-          const trafficWeight = 0.5; // tuning constant
+          // traffic weight: configurable via kernel.config.trafficWeight or Settings
+          let trafficWeight = 0.5;
+          try {
+            const Settings = require('../config/Settings.js').default;
+            const cfg = (this.kernel && this.kernel.config) ? this.kernel.config : {};
+            trafficWeight = (typeof cfg.trafficWeight === 'number') ? cfg.trafficWeight : (Settings && Settings.trafficWeight ? Settings.trafficWeight : trafficWeight);
+          } catch (e) {
+            trafficWeight = (this.kernel && this.kernel.config && typeof this.kernel.config.trafficWeight === 'number') ? this.kernel.config.trafficWeight : trafficWeight;
+          }
 
           // incorporate priority: higher priority lowers effective cost
           const priority = (task.data && typeof task.data.priority === 'number') ? task.data.priority : 0;

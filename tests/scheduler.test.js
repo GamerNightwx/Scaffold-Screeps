@@ -5,7 +5,7 @@ describe('Scheduler', () => {
   let kernel;
   let wm;
   let scheduler;
-  
+
   beforeEach(() => {
     global.Game = { time: 100 };
 

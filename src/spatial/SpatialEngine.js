@@ -60,7 +60,16 @@ export default class SpatialEngine {
     };
 
     // decay factor applied each tick to traffic counters (0 < decay < 1)
-    this._trafficDecay = 0.85;
+    // configurable via kernel.config.trafficDecay or src/config/Settings
+    try {
+      // Lazy import Settings to avoid circular issues in tests
+      const Settings = require('../config/Settings.js').default;
+      const cfg = (kernel && kernel.config) ? kernel.config : {};
+      this._trafficDecay = (typeof cfg.trafficDecay === 'number') ? cfg.trafficDecay : (Settings && Settings.trafficDecay ? Settings.trafficDecay : 0.85);
+    } catch (e) {
+      // Fallback if require/import fails in some test envs
+      this._trafficDecay = (kernel && kernel.config && typeof kernel.config.trafficDecay === 'number') ? kernel.config.trafficDecay : 0.85;
+    }
   }
 
   /**

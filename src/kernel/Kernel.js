@@ -11,6 +11,7 @@ export default class Kernel {
    * @param {Object<string, Function>} config.subsystems - Map de subsistemas
    */
   constructor(config = {}) {
+    this.config = config;
     this.cpuBudget = config.cpuBudget || 19;
     this.cpuReserve = config.cpuReserve || 2;
 
