@@ -96,8 +96,20 @@ export class WorkingMemoryInterface {
 // ----- DecisionEngine -----
 export class DecisionEngineInterface {
   registerScorer() { throw new Error('DecisionEngine.registerScorer() not implemented'); }
+  unregisterScorer() { throw new Error('DecisionEngine.unregisterScorer() not implemented'); }
+  /**
+   * Evaluate a list of goals returning array of {goal, score}
+   */
   evaluate() { throw new Error('DecisionEngine.evaluate() not implemented'); }
   tick() { throw new Error('DecisionEngine.tick() not implemented'); }
+  /**
+   * Learning and adaptation hooks
+   */
+  observeOutcome() { throw new Error('DecisionEngine.observeOutcome() not implemented'); }
+  updateWeights() { throw new Error('DecisionEngine.updateWeights() not implemented'); }
+  exportWeights() { throw new Error('DecisionEngine.exportWeights() not implemented'); }
+  importWeights() { throw new Error('DecisionEngine.importWeights() not implemented'); }
+  getWeights() { throw new Error('DecisionEngine.getWeights() not implemented'); }
   getMetrics() { throw new Error('DecisionEngine.getMetrics() not implemented'); }
 }
 

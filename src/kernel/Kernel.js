@@ -93,7 +93,18 @@ export default class Kernel {
         'taskEngine',
         'scheduler',
         'agentRuntime',
-        'commandEngine'
+        'commandEngine',
+        // Logistics managers (before economy)
+        'storageManager',
+        'linkManager',
+        'haulerScaler',
+        // Economy managers
+        'spawnManager',
+        'miningManager',
+        'haulerManager',
+        'factoryManager',
+        'labManager',
+        'marketManager'
       ];
 
       for (const subsystemName of order) {
