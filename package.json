@@ -14,8 +14,8 @@
     "lint": "eslint src/ tests/ --max-warnings 10",
     "lint:fix": "eslint src/ tests/ --fix",
     "check": "npm run lint && npm run test",
-    "upload": "node upload.js",
-    "upload:local": "node upload.js --host 127.0.0.1 --port 21025",
+    "upload": "node upload.cjs",
+    "upload:local": "node upload.cjs --host 127.0.0.1 --port 21025",
     "dev": "npm run watch"
   },
   "devDependencies": {

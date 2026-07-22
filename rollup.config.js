@@ -4,7 +4,7 @@
  *
  * - Input: src/main.js
  * - Output: dist/main.js (single file, CommonJS)
- * - Preserva estrutura modular sem bundling de require()
+ * - Named export: module.exports.loop
  */
 
 export default {
@@ -12,8 +12,8 @@ export default {
   output: {
     file: 'dist/main.js',
     format: 'cjs',
-    exports: 'default',
-    strict: false // Screeps não quer 'use strict' no topo
+    exports: 'named', // Screeps precisa de named exports
+    strict: false
   },
   external: [],
   plugins: []

@@ -41,7 +41,7 @@ function initKernel() {
  * Loop principal do jogo
  * Chamado pelo Screeps a cada tick
  */
-export default function loop() {
+export function loop() {
   try {
     const kernel = initKernel();
     const result = kernel.tick();
