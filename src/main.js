@@ -13,6 +13,7 @@ import SpatialEngine from './spatial/SpatialEngine.js';
 import WorkingMemory from './memory/WorkingMemory.js';
 import Blackboard from './blackboard/Blackboard.js';
 import { config } from './config.js';
+import DecisionEngine from './decision/DecisionEngine.js';
 
 // Singleton global para preservar estado entre ticks
 let kernelInstance = null;
@@ -28,7 +29,7 @@ function initKernel() {
       spatialEngine: (k) => new SpatialEngine(k),
       workingMemory: (k) => new WorkingMemory(k),
       blackboard: (k) => new Blackboard(k),
-      decisionEngine: (_k) => ({ tick: () => {} }),
+      decisionEngine: (k) => new DecisionEngine(k),
       taskFactory: (_k) => ({ tick: () => {} }),
       taskEngine: (_k) => ({ tick: () => {} }),
       scheduler: (_k) => ({ tick: () => {} }),
