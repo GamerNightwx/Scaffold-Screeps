@@ -14,6 +14,8 @@ import WorkingMemory from './memory/WorkingMemory.js';
 import Blackboard from './blackboard/Blackboard.js';
 import { config } from './config.js';
 import DecisionEngine from './decision/DecisionEngine.js';
+import TaskFactory from './tasks/TaskFactory.js';
+import TaskEngine from './tasks/TaskEngine.js';
 
 // Singleton global para preservar estado entre ticks
 let kernelInstance = null;
@@ -30,8 +32,8 @@ function initKernel() {
       workingMemory: (k) => new WorkingMemory(k),
       blackboard: (k) => new Blackboard(k),
       decisionEngine: (k) => new DecisionEngine(k),
-      taskFactory: (_k) => ({ tick: () => {} }),
-      taskEngine: (_k) => ({ tick: () => {} }),
+      taskFactory: (k) => new TaskFactory(k),
+      taskEngine: (k) => new TaskEngine(k),
       scheduler: (_k) => ({ tick: () => {} }),
       agentRuntime: (_k) => ({ tick: () => {} }),
       commandEngine: (_k) => ({ tick: () => {} })
