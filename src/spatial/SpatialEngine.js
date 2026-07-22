@@ -129,21 +129,62 @@ export default class SpatialEngine {
   }
 
   /**
-   * Compute a multi-room path (simple heuristic): if rooms differ, prefer straight-line + room transition penalties
-   * @param {RoomPosition} start
-   * @param {RoomPosition} end
-   * @param {Object} opts
-   * @returns {PathCacheEntry}
-   */
+  * Compute a multi-room path using PathFinder when available, otherwise fallback to heuristic
+  * @param {RoomPosition} start
+  * @param {RoomPosition} end
+  * @param {Object} opts
+  * @returns {PathCacheEntry}
+  */
   computeMultiRoomPath(start, end, opts = {}) {
-    // Simple deterministic multi-room path: walk to room edge, add room penalty per transition
+    const ttl = opts.ttl || 100;
+
+    // Use PathFinder if available in the runtime
+    if (typeof PathFinder !== 'undefined' && Game && Game.map && typeof Game.map.findExit === 'function') {
+      try {
+        const range = opts.range || 1;
+        const pfOpts = {
+          plainCost: 1,
+          swampCost: 5,
+          maxOps: opts.maxOps || 2000,
+          roomCallback: (roomName) => {
+            // If room not visible, fallback to default (allow traversal with higher cost)
+            if (!Game.rooms || !Game.rooms[roomName]) return true;
+            // Build a cost matrix where walls are avoided
+            try {
+              const terrain = new Room.Terrain(roomName);
+              const cm = new PathFinder.CostMatrix();
+              for (let y = 0; y < 50; y++) {
+                for (let x = 0; x < 50; x++) {
+                  if (terrain.get(x, y) === TERRAIN_MASK_WALL) cm.set(x, y, 255);
+                }
+              }
+              return cm;
+            } catch (e) {
+              return true;
+            }
+          }
+        };
+
+        const result = PathFinder.search(start, { pos: end, range }, pfOpts);
+        const entry = {
+          path: result.path || [],
+          cost: (result.path ? result.path.length : 0) + (result.incomplete ? 10000 : 0),
+          computedTick: Game ? Game.time : 0,
+          ttl
+        };
+
+        return entry;
+      } catch (e) {
+        // If PathFinder failed, fall through to heuristic
+      }
+    }
+
+    // Fallback heuristic: room transition penalty
     const roomPenalty = 50; // cost added per room boundary crossed
     const sameRoomCost = Math.abs(start.x - end.x) + Math.abs(start.y - end.y);
     const roomsCrossed = start.roomName === end.roomName ? 0 : 1; // coarse estimate
 
-    // Fake path: concatenate straight segments (start -> edge) + (edge -> end)
     const path = [];
-    // move horizontally to align x
     let cx = start.x;
     let cy = start.y;
     while (cx !== end.x) {
@@ -159,7 +200,7 @@ export default class SpatialEngine {
       path,
       cost: sameRoomCost + roomsCrossed * roomPenalty,
       computedTick: Game ? Game.time : 0,
-      ttl: opts.ttl || 100
+      ttl
     };
 
     return entry;
