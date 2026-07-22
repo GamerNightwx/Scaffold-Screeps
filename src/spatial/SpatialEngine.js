@@ -48,6 +48,9 @@ export default class SpatialEngine {
     // Cache de topologia: Map<roomName, TopologyRegion[]>
     this.topologyCache = new Map();
 
+    // Flow field cache: Map<roomName, matrix of vectors>
+    this.flowFieldCache = new Map();
+
     // Traffic tracking: Map<roomName, number> (exponential-decay counter)
     this.traffic = new Map();
 
@@ -57,6 +60,7 @@ export default class SpatialEngine {
       pathCacheMisses: 0,
       distanceMatrixComputes: 0,
       topologyAnalyzes: 0,
+      flowFieldComputes: 0
     };
 
     // decay factor applied each tick to traffic counters (0 < decay < 1)
@@ -82,6 +86,10 @@ export default class SpatialEngine {
    */
   computePath(start, end, opts = {}) {
     const { ignoreCreeps = false, range = 1, ttl = 100 } = opts;
+    // Delegate to multi-room if rooms differ
+    if (start.roomName !== end.roomName) {
+      return this.computeMultiRoomPath(start, end, opts);
+    }
 
     // Gera hash para o cache
     const hash = this._pathCacheHash(start, end, ignoreCreeps, range);
@@ -119,6 +127,44 @@ export default class SpatialEngine {
     this.pathCache.set(hash, entry);
     return entry;
   }
+
+  /**
+   * Compute a multi-room path (simple heuristic): if rooms differ, prefer straight-line + room transition penalties
+   * @param {RoomPosition} start
+   * @param {RoomPosition} end
+   * @param {Object} opts
+   * @returns {PathCacheEntry}
+   */
+  computeMultiRoomPath(start, end, opts = {}) {
+    // Simple deterministic multi-room path: walk to room edge, add room penalty per transition
+    const roomPenalty = 50; // cost added per room boundary crossed
+    const sameRoomCost = Math.abs(start.x - end.x) + Math.abs(start.y - end.y);
+    const roomsCrossed = start.roomName === end.roomName ? 0 : 1; // coarse estimate
+
+    // Fake path: concatenate straight segments (start -> edge) + (edge -> end)
+    const path = [];
+    // move horizontally to align x
+    let cx = start.x;
+    let cy = start.y;
+    while (cx !== end.x) {
+      cx += (end.x > cx) ? 1 : -1;
+      path.push({ x: cx, y: cy, roomName: start.roomName });
+    }
+    while (cy !== end.y) {
+      cy += (end.y > cy) ? 1 : -1;
+      path.push({ x: cx, y: cy, roomName: start.roomName });
+    }
+
+    const entry = {
+      path,
+      cost: sameRoomCost + roomsCrossed * roomPenalty,
+      computedTick: Game ? Game.time : 0,
+      ttl: opts.ttl || 100
+    };
+
+    return entry;
+  }
+
 
   /**
    * Retorna matriz de distâncias para uma sala
@@ -275,14 +321,66 @@ export default class SpatialEngine {
         size: this.topologyCache.size,
         analyzes: this.metrics.topologyAnalyzes,
       },
+      flowField: {
+        computes: this.metrics.flowFieldComputes,
+        cacheSize: this.flowFieldCache.size
+      }
     };
   }
 
   /**
-   * Get approximate traffic metric for a room (used by Scheduler)
+   * Compute a flow field for a room given an array of goal positions
+   * Returns a 50x50 matrix of vectors {dx,dy} pointing towards the nearest goal
    * @param {string} roomName
-   * @returns {number}
+   * @param {Array<RoomPosition>} goals
+   * @param {Object} opts
+   * @returns {Array<Array<{dx:number,dy:number}>>}
    */
+  computeFlowField(roomName, goals, opts = {}) {
+    if (!Array.isArray(goals) || goals.length === 0) return null;
+
+    // If cached and recent, return
+    const cacheKey = `${roomName}:${goals.map(g => `${g.x},${g.y}`).join('|')}`;
+    const now = Game ? Game.time : 0;
+    if (this.flowFieldCache.has(cacheKey)) {
+      const entry = this.flowFieldCache.get(cacheKey);
+      if (now - entry.computedTick < (opts.ttl || 10)) return entry.matrix;
+    }
+
+    // Compute distance matrix to closest goal (min over goals)
+    const distMatrix = Array.from({ length: 50 }, () => Array(50).fill(Infinity));
+
+    for (const goal of goals) {
+      const m = this._floodFillDistances(roomName, goal);
+      for (let y = 0; y < 50; y++) {
+        for (let x = 0; x < 50; x++) {
+          if (m[y][x] >= 0 && m[y][x] < distMatrix[y][x]) distMatrix[y][x] = m[y][x];
+        }
+      }
+    }
+
+    // Build vector field: for each cell, pick neighbor with smallest distance
+    const matrix = Array.from({ length: 50 }, () => Array(50).fill(null));
+    for (let y = 0; y < 50; y++) {
+      for (let x = 0; x < 50; x++) {
+        if (distMatrix[y][x] === Infinity) { matrix[y][x] = null; continue; }
+        if (distMatrix[y][x] === 0) { matrix[y][x] = { dx: 0, dy: 0 }; continue; }
+        const neighbors = [ [0,-1],[1,0],[0,1],[-1,0] ];
+        let best = null;
+        for (const [dx,dy] of neighbors) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || nx >= 50 || ny < 0 || ny >= 50) continue;
+          if (distMatrix[ny][nx] < distMatrix[y][x]) { best = { dx, dy }; break; }
+        }
+        matrix[y][x] = best || { dx: 0, dy: 0 };
+      }
+    }
+
+    this.metrics.flowFieldComputes++;
+    this.flowFieldCache.set(cacheKey, { matrix, computedTick: now });
+    return matrix;
+  }
+
   getTraffic(roomName) {
     const v = this.traffic.get(roomName) || 0;
     return v;
