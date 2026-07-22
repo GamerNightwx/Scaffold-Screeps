@@ -17,7 +17,7 @@ export default class WorldModel {
     this.previousSnapshot = this.currentSnapshot;
 
     const startTime = Date.now();
-    const startCpu = Game.cpu.getUsed();
+    const startCpu = (Game && Game.cpu && typeof Game.cpu.getUsed === 'function') ? Game.cpu.getUsed() : 0;
 
     const game = {
       time: Game.time,
@@ -38,8 +38,8 @@ export default class WorldModel {
       meta: {
         timestamp: startTime,
         cpuStarted: startCpu,
-        cpuFinished: Game.cpu.getUsed(),
-        cpuUsed: Game.cpu.getUsed() - startCpu
+      cpuFinished: (Game && Game.cpu && typeof Game.cpu.getUsed === 'function') ? Game.cpu.getUsed() : startCpu,
+      cpuUsed: ((Game && Game.cpu && typeof Game.cpu.getUsed === 'function') ? Game.cpu.getUsed() : startCpu) - startCpu
       }
     };
 
@@ -60,6 +60,27 @@ export default class WorldModel {
    */
   previous() {
     return this.previousSnapshot;
+  }
+
+  /**
+   * Return history of snapshots between fromTick and toTick (inclusive)
+   * For now, only supports returning previous and current snapshots if they match range
+   * @param {number} fromTick
+   * @param {number} toTick
+   * @returns {Array}
+   */
+  history(fromTick, toTick) {
+    const out = [];
+    if (this.previousSnapshot) {
+      const t = this.previousSnapshot.tickId;
+      if ((fromTick === undefined || t >= fromTick) && (toTick === undefined || t <= toTick)) out.push(this.previousSnapshot);
+    }
+    if (this.currentSnapshot) {
+      const t = this.currentSnapshot.tickId;
+      if ((fromTick === undefined || t >= fromTick) && (toTick === undefined || t <= toTick)) out.push(this.currentSnapshot);
+    }
+
+    return out;
   }
 
   /**

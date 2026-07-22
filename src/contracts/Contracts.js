@@ -17,12 +17,50 @@ export class KernelInterface {
 }
 
 // ----- WorldModel -----
+/**
+ * @typedef {Object} WorldSnapshot
+ * @property {number} tickId
+ * @property {Object} game - captured immutable game state (creeps, structures, rooms, flags, resources)
+ * @property {Object} memory - shallow copy of Memory for inspection
+ * @property {Object<string, Object>} indices - precomputed indices (creepsByRoom, structuresByType, etc.)
+ * @property {Object} meta - metadata (timestamp, cpuUsed, etc.)
+ */
+
+/**
+ * @interface WorldModelInterface
+ * Responsibilities:
+ * - snapshot(): capture a full immutable snapshot of the Game state for this tick
+ * - current(): return last snapshot
+ * - previous(): return prior snapshot
+ * - query(indexName, key): lookup precomputed indices
+ * - entities(type): return list of entities of given type (creeps/structures/rooms/flags/resources)
+ * - history(range): (optional) return array of snapshots for given tick range
+ */
 export class WorldModelInterface {
+  /** @returns {WorldSnapshot} */
   snapshot() { throw new Error('WorldModel.snapshot() not implemented'); }
+  /** @returns {WorldSnapshot} */
   current() { throw new Error('WorldModel.current() not implemented'); }
+  /** @returns {WorldSnapshot|null} */
   previous() { throw new Error('WorldModel.previous() not implemented'); }
+  /**
+   * @param {string} indexName
+   * @param {string} key
+   * @returns {Array}
+   */
   query() { throw new Error('WorldModel.query() not implemented'); }
+  /**
+   * @param {string} type
+   * @returns {Array}
+   */
   entities() { throw new Error('WorldModel.entities() not implemented'); }
+  /**
+   * Optional: return historical snapshots between ticks [from, to]
+   * @param {number} fromTick
+   * @param {number} toTick
+   * @returns {WorldSnapshot[]}
+   */
+  history() { throw new Error('WorldModel.history() not implemented'); }
 }
 
 // ----- SpatialEngine -----
