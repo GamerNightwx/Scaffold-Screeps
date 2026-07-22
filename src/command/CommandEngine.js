@@ -23,7 +23,20 @@ export default class CommandEngine {
     switch (cmd.action) {
     case 'moveTo':
       // target is RoomPosition-like
-      if (creep.moveTo) return creep.moveTo(cmd.target);
+      if (creep.moveTo) {
+        const res = creep.moveTo(cmd.target);
+        // record traffic for the room
+        try {
+          const roomName = (cmd.target && cmd.target.roomName) || creep.pos.roomName;
+          if (this.kernel && this.kernel.has && this.kernel.has('spatialEngine')) {
+            const se = this.kernel.get('spatialEngine');
+            if (se && typeof se.recordTraffic === 'function') se.recordTraffic(roomName, 1);
+          }
+        } catch (e) {
+          // ignore recording errors
+        }
+        return res;
+      }
       return OK;
     case 'harvest':
       if (creep.harvest) return creep.harvest(Game.getObjectById(cmd.targetId));

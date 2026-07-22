@@ -48,6 +48,9 @@ export default class SpatialEngine {
     // Cache de topologia: Map<roomName, TopologyRegion[]>
     this.topologyCache = new Map();
 
+    // Traffic tracking: Map<roomName, number> (exponential-decay counter)
+    this.traffic = new Map();
+
     // Contadores para metrics
     this.metrics = {
       pathCacheHits: 0,
@@ -55,6 +58,9 @@ export default class SpatialEngine {
       distanceMatrixComputes: 0,
       topologyAnalyzes: 0,
     };
+
+    // decay factor applied each tick to traffic counters (0 < decay < 1)
+    this._trafficDecay = 0.85;
   }
 
   /**
@@ -206,6 +212,12 @@ export default class SpatialEngine {
    */
   tick() {
     this.cleanup();
+    // decay traffic counters each tick
+    for (const [roomName, val] of this.traffic.entries()) {
+      const decayed = val * this._trafficDecay;
+      if (decayed < 0.01) this.traffic.delete(roomName);
+      else this.traffic.set(roomName, decayed);
+    }
   }
 
   /**
@@ -263,10 +275,21 @@ export default class SpatialEngine {
    * @returns {number}
    */
   getTraffic(roomName) {
-    // Placeholder: no traffic tracking implemented yet
-    // Returns 0 for no traffic
-    return 0;
+    const v = this.traffic.get(roomName) || 0;
+    return v;
   }
+
+  /**
+   * Record traffic occurrence in a room (called by AgentRuntime/CommandEngine)
+   * @param {string} roomName
+   * @param {number} weight
+   */
+  recordTraffic(roomName, weight = 1) {
+    if (!roomName) return;
+    const prev = this.traffic.get(roomName) || 0;
+    this.traffic.set(roomName, prev + weight);
+  }
+
 
   // ===== PRIVATE METHODS =====
 
