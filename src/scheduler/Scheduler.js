@@ -51,6 +51,11 @@ export default class Scheduler {
       const agent = agentsObj[agentId];
       const agentPos = agent && agent.pos ? agent.pos : null;
 
+      // availability info
+      const energy = (agent && (agent.energy !== undefined ? agent.energy : (agent.store && agent.store[RESOURCE_ENERGY] !== undefined ? agent.store[RESOURCE_ENERGY] : null)));
+      const carry = (agent && agent.store ? Object.values(agent.store).reduce((a,b)=>a+(b||0),0) : null);
+      const skills = (agent && agent.memory && agent.memory.skills) ? agent.memory.skills : {};
+
       for (const task of tasks) {
         const target = task.data && task.data.meta && task.data.meta.target ? task.data.meta.target : null;
         let cost = Number.POSITIVE_INFINITY;
@@ -64,9 +69,44 @@ export default class Scheduler {
             cost = Math.abs(agentPos.x - target.x) + Math.abs(agentPos.y - target.y);
           }
 
+          // Availability penalty: if task requires energy/carry and agent lacks it, add large penalty
+          const reqEnergy = (task.data && task.data.meta && task.data.meta.requiredEnergy) || 0;
+          const reqCarry = (task.data && task.data.meta && task.data.meta.requiredCarry) || 0;
+          let availabilityPenalty = 0;
+          if (reqEnergy && (energy === null || energy < reqEnergy)) availabilityPenalty += 1000; // effectively avoid
+          if (reqCarry && (carry === null || carry < reqCarry)) availabilityPenalty += 1000;
+
+          // Agent skill factor: reduce cost if agent skilled for task type
+          const taskType = task.data && task.data.type ? task.data.type : 'generic';
+          const skillLevel = skills[taskType] || 0; // numeric level
+          // stronger skill factor: each level halves cost contribution progressively
+          const skillFactor = 1 / (1 + skillLevel);
+
+          // Task type penalty (some tasks are more expensive by default)
+          const typePenalties = {
+            build: 1.2,
+            repair: 1.3,
+            move: 1.0,
+            harvest: 0.9,
+            transfer: 1.0,
+            generic: 1.0
+          };
+          const typePenalty = typePenalties[taskType] || 1.0;
+
+          // Room traffic factor from spatial (optional)
+          let traffic = 0;
+          if (spatial && target && typeof spatial.getTraffic === 'function') {
+            try { traffic = spatial.getTraffic(target.roomName) || 0; } catch (e) { traffic = 0; }
+          }
+          const trafficWeight = 0.5; // tuning constant
+
           // incorporate priority: higher priority lowers effective cost
           const priority = (task.data && typeof task.data.priority === 'number') ? task.data.priority : 0;
-          const effective = cost / (1 + priority);
+
+          // small skill bonus to prefer skilled agents on ties
+          const skillBonus = skillLevel * 0.01;
+
+          const effective = (cost * typePenalty * skillFactor + availabilityPenalty + traffic * trafficWeight) / (1 + priority) - skillBonus;
 
           pairs.push({ agentId, task, cost: effective });
         } catch (e) {
