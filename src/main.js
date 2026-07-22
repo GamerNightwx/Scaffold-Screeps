@@ -9,6 +9,7 @@
 
 import Kernel from './kernel/Kernel.js';
 import WorldModel from './core/WorldModel.js';
+import SpatialEngine from './spatial/SpatialEngine.js';
 import { config } from './config.js';
 
 // Singleton global para preservar estado entre ticks
@@ -22,7 +23,7 @@ function initKernel() {
     cpuReserve: config.kernel.cpuReserve,
     subsystems: {
       worldModel: (_k) => new WorldModel(),
-      spatialEngine: (_k) => ({ tick: () => {} }),
+      spatialEngine: (k) => new SpatialEngine(k),
       workingMemory: (_k) => ({ tick: () => {} }),
       blackboard: (_k) => ({ tick: () => {}, clear: () => {} }),
       decisionEngine: (_k) => ({ tick: () => {} }),
