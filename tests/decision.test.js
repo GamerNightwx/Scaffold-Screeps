@@ -22,7 +22,7 @@ describe('DecisionEngine', () => {
 
   it('registers and uses scorers', () => {
     engine.registerScorer('priority', (goal) => goal.data.priority || 0);
-    engine.registerScorer('distancePenalty', (goal, ctx) => {
+    engine.registerScorer('distancePenalty', (goal, _ctx) => {
       // mock distance: smaller data.dist -> higher score
       return (100 - (goal.data.dist || 100)) / 100;
     });

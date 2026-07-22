@@ -14,7 +14,7 @@ describe('TaskEngine', () => {
       set: (col, obj) => { if (!wm._c[col]) wm._c[col] = {}; wm._c[col][obj.id] = obj; },
       get: (col, id) => (wm._c[col] || {})[id] || null,
     };
-    kernel = { has: (name) => name === 'workingMemory', get: (name) => wm };
+    kernel = { has: (_name) => _name === 'workingMemory', get: (_name) => wm };
     engine = new TaskEngine(kernel);
   });
 

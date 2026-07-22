@@ -16,6 +16,9 @@ import { config } from './config.js';
 import DecisionEngine from './decision/DecisionEngine.js';
 import TaskFactory from './tasks/TaskFactory.js';
 import TaskEngine from './tasks/TaskEngine.js';
+import Scheduler from './scheduler/Scheduler.js';
+import AgentRuntime from './agent/AgentRuntime.js';
+import CommandEngine from './command/CommandEngine.js';
 
 // Singleton global para preservar estado entre ticks
 let kernelInstance = null;
@@ -34,9 +37,9 @@ function initKernel() {
       decisionEngine: (k) => new DecisionEngine(k),
       taskFactory: (k) => new TaskFactory(k),
       taskEngine: (k) => new TaskEngine(k),
-      scheduler: (_k) => ({ tick: () => {} }),
-      agentRuntime: (_k) => ({ tick: () => {} }),
-      commandEngine: (_k) => ({ tick: () => {} })
+      scheduler: (k) => new Scheduler(k),
+      agentRuntime: (k) => new AgentRuntime(k),
+      commandEngine: (k) => new CommandEngine(k)
     }
   });
 
