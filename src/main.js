@@ -10,6 +10,8 @@
 import Kernel from './kernel/Kernel.js';
 import WorldModel from './core/WorldModel.js';
 import SpatialEngine from './spatial/SpatialEngine.js';
+import WorkingMemory from './memory/WorkingMemory.js';
+import Blackboard from './blackboard/Blackboard.js';
 import { config } from './config.js';
 
 // Singleton global para preservar estado entre ticks
@@ -24,8 +26,8 @@ function initKernel() {
     subsystems: {
       worldModel: (_k) => new WorldModel(),
       spatialEngine: (k) => new SpatialEngine(k),
-      workingMemory: (_k) => ({ tick: () => {} }),
-      blackboard: (_k) => ({ tick: () => {}, clear: () => {} }),
+      workingMemory: (k) => new WorkingMemory(k),
+      blackboard: (k) => new Blackboard(k),
       decisionEngine: (_k) => ({ tick: () => {} }),
       taskFactory: (_k) => ({ tick: () => {} }),
       taskEngine: (_k) => ({ tick: () => {} }),
