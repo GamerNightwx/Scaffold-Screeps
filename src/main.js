@@ -19,6 +19,7 @@ import TaskEngine from './tasks/TaskEngine.js';
 import Scheduler from './scheduler/Scheduler.js';
 import AgentRuntime from './agent/AgentRuntime.js';
 import CommandEngine from './command/CommandEngine.js';
+import SpawnManager from './spawn/SpawnManager.js';
 import RoadPlanner from './RoadPlanner.js';
 import DefensePlanner from './DefensePlanner.js';
 import * as BlueprintPlannerModule from './BlueprintPlanner.js';
@@ -52,6 +53,7 @@ function initKernel() {
       scheduler: (k) => new Scheduler(k),
       agentRuntime: (k) => new AgentRuntime(k),
       commandEngine: (k) => new CommandEngine(k),
+      spawnManager: (k) => new SpawnManager(k),
       // Road planner: collects hauler path samples and proposes road construction
       roadPlanner: (k) => new RoadPlanner(k),
       defensePlanner: (k) => new DefensePlanner(k),

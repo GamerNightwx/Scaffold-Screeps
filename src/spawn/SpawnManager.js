@@ -157,7 +157,8 @@ export default class SpawnManager {
   }
 
   // A lightweight tick that chooses the next spawn and returns the resolved blueprint
-  // Does not attempt to use Game.spawns; it is intentionally side-effect free for unit tests.
+  // In production (with Game API), also executes actual spawns.
+  // In tests, just returns the next prepared blueprint without side effects.
   tick() {
     // reconcile pending spawn jobs with live creeps first
     try { this._reconcileSpawns(); } catch (e) { /* ignore */ }
@@ -165,11 +166,25 @@ export default class SpawnManager {
     // auto-enqueue urgent haulers before resolving next request
     try { this._autoEnqueueUrgentLogistics(); } catch (e) { /* ignore */ }
 
+    // IN PRODUCTION: Attempt to spawn actual creeps (only if Game API available)
+    if (typeof Game !== 'undefined' && Game.spawns && this.queue.length > 0) {
+      const maxPerTick = 2; // rate-limit spawns
+      for (let i = 0; i < maxPerTick && this.queue.length > 0; i++) {
+        try {
+          this.spawnNext();
+        } catch (e) {
+          // ignore per-spawn errors
+        }
+      }
+    }
+
+    // Return the next prepared blueprint for inspection (for tests and monitoring)
     const next = this.peekNext();
     if (!next) return null;
     const bp = this.chooseBlueprint(next);
     if (!bp) return null;
     const resolved = typeof bp === 'function' ? bp(next.meta || {}, this.kernel) : bp;
+    
     return { request: next, blueprint: resolved };
   }
 
