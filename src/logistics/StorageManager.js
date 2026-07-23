@@ -158,18 +158,43 @@ export default class StorageManager {
             if (sourceRoom === roomName) continue;
             const sourceAmount = sourceStock[resource] || 0;
             if (sourceAmount > this.refillTargets[resource]) {
+              const amount = Math.min(needed, sourceAmount - this.refillTargets[resource]);
+              const lm = this.kernel && this.kernel.has && this.kernel.has('linkManager') ? this.kernel.get('linkManager') : null;
+              let priority = 'medium';
+              try {
+                const eff = lm && typeof lm.getRouteEfficiency === 'function' ? lm.getRouteEfficiency(sourceRoom, roomName) : null;
+                if (eff !== null && eff !== undefined) {
+                  priority = eff < 0.6 ? 'high' : 'medium';
+                } else {
+                  priority = 'high'; // cross-room without efficiency info -> conservative high
+                }
+              } catch (e) { priority = 'high'; }
+
               const job = {
                 id: `refill-${roomName}-${resource}-${Math.random().toString(36).slice(2,6)}`,
                 data: {
                   type: 'refill',
                   resource,
-                  amount: Math.min(needed, sourceAmount - this.refillTargets[resource]),
+                  amount,
                   from: sourceRoom,
                   to: roomName,
+                  priority,
                   status: 'pending',
                   createdAt: this._nowTick()
                 }
               };
+
+              // persist job
+              if (this.wm && typeof this.wm.set === 'function') {
+                try { this.wm.set('storage_refills', job); } catch (e) { /* ignore */ }
+              }
+
+              // create corresponding goal with numeric priority
+              try {
+                const numeric = priority === 'high' ? 100 : (priority === 'medium' ? 50 : 10);
+                const goal = { id: `goal-${job.id}`, data: { type: 'transport', priority: numeric, createdFrom: job.id, meta: { jobId: job.id, resource, amount, from: sourceRoom, to: roomName } } };
+                if (this.wm && typeof this.wm.set === 'function') this.wm.set('goals', goal);
+              } catch (e) { /* ignore */ }
               if (this.wm && typeof this.wm.set === 'function') {
                 try { this.wm.set('storage_refills', job); } catch (e) { /* ignore */ }
               }

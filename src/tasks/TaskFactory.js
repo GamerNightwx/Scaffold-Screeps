@@ -39,6 +39,95 @@ export default class TaskFactory {
     return created;
   }
 
+  /**
+   * Create high-level goals from constructionPlans saved by planners (e.g., RoadPlanner)
+   * Idempotent: does not recreate goals that already reference the same plan
+   */
+  createGoalsFromConstructionPlans() {
+    const wm = this._ensureWM();
+    if (!wm) return [];
+
+    const plans = wm.list('constructionPlans') || [];
+    const goals = wm.list('goals') || [];
+    const existingByPlan = new Set((goals || []).map(g => g.data && g.data.planId).filter(Boolean));
+
+    const created = [];
+    for (const p of plans) {
+      try {
+        const plan = p.data || p;
+        if (!plan || !plan.room) continue;
+        if (existingByPlan.has(p.id)) continue;
+
+        const goalId = `goal_build:${p.id}`;
+        const now = Game ? Game.time : Date.now();
+        const goal = {
+          id: goalId,
+          createdTick: now,
+          versionToken: `${now}-${p.id}`,
+          valid: true,
+          data: {
+            type: 'build',
+            planId: p.id,
+            position: { roomName: plan.room, x: plan.x, y: plan.y },
+            priority: typeof plan.count === 'number' ? plan.count : 0,
+            // keep original plan for debugging
+            sourcePlan: plan
+          }
+        };
+
+        wm.set('goals', goal);
+        created.push(goal);
+      } catch (e) {
+        // ignore per-plan errors
+      }
+    }
+
+    return created;
+  }
+
+  /**
+   * Create goals from defensePlans saved by DefensePlanner
+   */
+  createGoalsFromDefensePlans() {
+    const wm = this._ensureWM();
+    if (!wm) return [];
+
+    const plans = wm.list('defensePlans') || [];
+    const goals = wm.list('goals') || [];
+    const existingByPlan = new Set((goals || []).map(g => g.data && g.data.planId).filter(Boolean));
+
+    const created = [];
+    for (const p of plans) {
+      try {
+        const plan = p.data || p;
+        if (!plan || !plan.room) continue;
+        if (existingByPlan.has(p.id)) continue;
+
+        const goalId = `goal_defend:${p.id}`;
+        const now = Game ? Game.time : Date.now();
+        const goal = {
+          id: goalId,
+          createdTick: now,
+          versionToken: `${now}-${p.id}`,
+          valid: true,
+          data: {
+              // create a build goal for planner proposals (ramparts/walls)
+              type: 'build',
+              planId: p.id,
+              position: { roomName: plan.room, x: plan.x, y: plan.y },
+              priority: typeof plan.score === 'number' ? plan.score : 0,
+              sourcePlan: plan
+            }
+        };
+
+        wm.set('goals', goal);
+        created.push(goal);
+      } catch (e) { }
+    }
+
+    return created;
+  }
+
   _makeTaskFromGoal(goal) {
     const taskId = `task_${goal.id}`;
     const now = Game ? Game.time : 0;
@@ -124,7 +213,15 @@ export default class TaskFactory {
   }
 
   tick() {
-    // Called by Kernel: ensure tasks exist for goals
+    // Called by Kernel: create goals from planner proposals, then create tasks
+    try {
+      this.createGoalsFromConstructionPlans();
+    } catch (e) { /* ignore */ }
+
+    try {
+      this.createGoalsFromDefensePlans && this.createGoalsFromDefensePlans();
+    } catch (e) { /* ignore */ }
+
     this.createTasksFromGoals();
   }
 }

@@ -28,5 +28,19 @@ export default {
   availabilityWeight: 1.0,
   skillWeight: 1.0,
   balanceWeight: 10.0, // penalty per existing assignment
-  preemptionThreshold: 5.0 // cost delta required to trigger preemption
+  preemptionThreshold: 5.0, // cost delta required to trigger preemption
+
+  // Hauler/Logistics tuning knobs
+  // Fraction of carry capacity that can be transferred per tick (default 25%)
+  haulerThroughputFraction: 0.25,
+  // Minimum units moved per tick regardless of fraction
+  haulerThroughputMin: 25,
+  // Fraction of carry capacity to pick up when arriving at source (default 50%)
+  haulerPickupFraction: 0.5,
+  // Minimum pickup amount
+  haulerPickupMin: 50,
+
+  // Spawn autoscaling knobs for pools
+  haulerPoolSpawnPriority: 90,
+  haulerPoolSpawnMaxPerPool: 3
 };

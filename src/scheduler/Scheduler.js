@@ -53,6 +53,8 @@ export default class Scheduler {
     const missingSkillPenaltyCfg = typeof cfg.missingSkillPenalty === 'number' ? cfg.missingSkillPenalty : 1000;
     const proficiencyScale = typeof cfg.skillProficiencyScale === 'number' ? cfg.skillProficiencyScale : 1.0;
     const skillAliases = cfg.skillAliases || {};
+    // priority weight: how much numeric task.priority reduces effective cost
+    const priorityWeight = typeof cfg.priorityWeight === 'number' ? cfg.priorityWeight : 0.1;
 
     // common type penalties
     const typePenalties = { build:1.2, repair:1.3, move:1.0, harvest:0.9, transfer:1.0, generic:1.0 };
@@ -84,6 +86,13 @@ export default class Scheduler {
     for (const asn of allAssignments) {
       const aid = asn.data && asn.data.agentId;
       if (aid) assignmentCounts[aid] = (assignmentCounts[aid] || 0) + 1;
+    }
+
+    // Track current assignments per task (for pooling support)
+    const assignedCountByTask = {};
+    for (const asn of allAssignments) {
+      const tid = asn.data && asn.data.taskId;
+      if (tid) assignedCountByTask[tid] = (assignedCountByTask[tid] || 0) + 1;
     }
 
     // Precompute agent current assigned task (if any) and its cost/priority
@@ -126,9 +135,12 @@ export default class Scheduler {
           const count = assignmentCounts[aid] || 0;
           const balancePenalty = count * balanceWeight;
 
-          const effectiveCost = (baseCost * pathWeight * typePenalty * typeWeight * skillFactor) + (availabilityPenalty * availabilityWeight) + (traffic * trafficWeightCfg) + (missingSkillPenalty) + (balancePenalty * balanceWeight);
+          let effectiveCost = (baseCost * pathWeight * typePenalty * typeWeight * skillFactor) + (availabilityPenalty * availabilityWeight) + (traffic * trafficWeightCfg) + (missingSkillPenalty) + (balancePenalty * balanceWeight);
+          // reduce cost by task priority (higher numeric priority preferred)
+          const tp = (t.data && typeof t.data.priority === 'number') ? t.data.priority : 0;
+          effectiveCost = effectiveCost - (tp * priorityWeight);
 
-          agentCurrent[aid] = { taskId: t.id, cost: effectiveCost, priority: (t.data && t.data.priority) || 0 };
+          agentCurrent[aid] = { taskId: t.id, cost: effectiveCost, priority: tp };
         } catch (e) {
           // ignore
         }
@@ -181,12 +193,16 @@ export default class Scheduler {
           const count = assignmentCounts[agentId] || 0;
           const balancePenalty = count * balanceWeight;
 
-          const effective = (baseCost * pathWeight * typePenalty * typeWeight * skillFactor)
+          let effective = (baseCost * pathWeight * typePenalty * typeWeight * skillFactor)
                            + (availabilityPenalty * availabilityWeight)
                            + (traffic * trafficWeightCfg)
                            + (missingSkillPenalty)
                            + (balancePenalty * balanceWeight)
                            - (agentSkillLevel * 0.01 * skillWeight);
+
+          // apply priority reduction (prefer tasks with higher numeric priority)
+          const taskPriorityNumeric = (task.data && typeof task.data.priority === 'number') ? task.data.priority : 0;
+          effective = effective - (taskPriorityNumeric * priorityWeight);
 
           pairs.push({ agentId, task, cost: effective, baseCost, agentSkillLevel });
         } catch (e) {
@@ -198,6 +214,13 @@ export default class Scheduler {
     // Sort pairs by cost asc
     pairs.sort((a, b) => a.cost - b.cost);
 
+    // Load hauler pools to allow multi-assignment for pooled transport jobs
+    const poolsList = wm.list('hauler_pools') || [];
+    const poolByJobId = new Map();
+    for (const pl of poolsList) {
+      if (pl && pl.data && pl.data.jobId) poolByJobId.set(pl.data.jobId, pl);
+    }
+
     const assignedAgents = new Set();
     const assignedTasks = new Set();
     const assignments = [];
@@ -206,9 +229,17 @@ export default class Scheduler {
     const removeExistingAssignment = (agentId) => {
       // find current task assigned to agent
       for (const t of (wm.list('tasks') || [])) {
+        // handle pooled assignees array
         if (t.data && t.data.assignee === agentId) {
           t.data.assignee = null;
           t.data.status = 'pending';
+          wm.set('tasks', t);
+        }
+        if (t.data && Array.isArray(t.data.assignees) && t.data.assignees.includes(agentId)) {
+          t.data.assignees = t.data.assignees.filter(a => a !== agentId);
+          if (t.data.assignees.length === 0) t.data.status = 'pending';
+          // keep legacy assignee field in sync
+          t.data.assignee = t.data.assignees && t.data.assignees.length ? t.data.assignees[0] : null;
           wm.set('tasks', t);
         }
       }
@@ -220,13 +251,32 @@ export default class Scheduler {
       }
     };
 
+    // helper to determine allowed slots for a task based on pools
+    const allowedSlotsForTask = (task) => {
+      if (!task || !task.data) return 0;
+      const meta = task.data.meta || {};
+      const jobId = (typeof task.data.createdFrom !== 'undefined' && task.data.createdFrom) ? task.data.createdFrom : (meta.jobId || (meta.meta && meta.meta.jobId) || null);
+      const pool = jobId ? poolByJobId.get(jobId) : null;
+      if (!pool) {
+        // non-pooled task: available if not already assigned
+        const alreadyAssigned = (task.data && task.data.assignee) || (assignedCountByTask[task.id] && assignedCountByTask[task.id] > 0);
+        return alreadyAssigned ? 0 : 1;
+      }
+      const maxMembers = (pool.data && typeof pool.data.maxMembersPerPool === 'number') ? pool.data.maxMembersPerPool : ((pool.data && typeof pool.data.maxMembers === 'number') ? pool.data.maxMembers : 1);
+      const currentlyAssigned = assignedCountByTask[task.id] || 0;
+      const available = Math.max(0, maxMembers - currentlyAssigned);
+      return available; // may be 0 when full
+    };
+
     // Preemption pre-pass: allow agents to be reallocated from current task to a better one
     for (const p of pairs) {
       const current = agentCurrent[p.agentId];
       if (!current) continue;
       const newPriority = (p.task && p.task.data && typeof p.task.data.priority === 'number') ? p.task.data.priority : 0;
       const currentPriority = current.priority || 0;
-      if (p.task.data && p.task.data.status === 'assigned') continue; // skip already assigned tasks
+      // allow preemption into pooled task only if slots available
+      const slots = allowedSlotsForTask(p.task);
+      if (slots <= 0) continue; // no capacity in pool
       if ((p.cost + preemptionThreshold) < current.cost && newPriority > currentPriority) {
         // perform preemption immediately
         removeExistingAssignment(p.agentId);
@@ -235,9 +285,25 @@ export default class Scheduler {
 
         const assignment = { id: `assign_${p.task.id}_${p.agentId}_${Game ? Game.time : 0}`, createdTick: Game ? Game.time : 0, data: { taskId: p.task.id, agentId: p.agentId } };
         wm.set('assignments', assignment);
-        p.task.data.assignee = p.agentId;
-        p.task.data.status = 'assigned';
-        wm.set('tasks', p.task);
+        // handle pooled assignment
+        const meta = p.task.data && p.task.data.meta ? p.task.data.meta : {};
+        const jobId = (typeof p.task.data.createdFrom !== 'undefined' && p.task.data.createdFrom) ? p.task.data.createdFrom : (meta.jobId || (meta.meta && meta.meta.jobId) || null);
+        const pool = jobId ? poolByJobId.get(jobId) : null;
+        if (pool) {
+          p.task.data.assignees = p.task.data.assignees || [];
+          p.task.data.assignees.push(p.agentId);
+          p.task.data.assignee = p.task.data.assignees[0];
+          p.task.data.status = 'assigned';
+          wm.set('tasks', p.task);
+          // notify pool manager if available
+          if (this.kernel && this.kernel.has && this.kernel.has('haulerPool')) {
+            try { this.kernel.get('haulerPool').assignMember(pool.id, p.agentId); } catch (e) { /* ignore pool errors */ }
+          }
+        } else {
+          p.task.data.assignee = p.agentId;
+          p.task.data.status = 'assigned';
+          wm.set('tasks', p.task);
+        }
 
         assignedAgents.add(p.agentId);
         assignedTasks.add(p.task.id);
@@ -246,6 +312,7 @@ export default class Scheduler {
         assignments.push(assignment);
         // update counts and agentCurrent
         assignmentCounts[p.agentId] = (assignmentCounts[p.agentId] || 0) + 1;
+        assignedCountByTask[p.task.id] = (assignedCountByTask[p.task.id] || 0) + 1;
         agentCurrent[p.agentId] = { taskId: p.task.id, cost: p.cost, priority: newPriority };
       }
     }
@@ -253,19 +320,41 @@ export default class Scheduler {
 
     for (const p of pairs) {
       const agentAssigned = assignedAgents.has(p.agentId);
-      const taskAssigned = assignedTasks.has(p.task.id) || (p.task.data && p.task.data.assignee && p.task.data.assignee !== p.agentId);
+      // consider pool slots when determining if task is already fully assigned
+      const slots = allowedSlotsForTask(p.task);
+      const taskFullyAssigned = (slots <= 0);
+      const taskAssigned = assignedTasks.has(p.task.id) || taskFullyAssigned || (p.task.data && p.task.data.assignee && p.task.data.assignee !== p.agentId);
 
-      if (!agentAssigned && !taskAssigned && (!p.task.data.assignee || p.task.data.assignee === null)) {
-        // free agent & free task -> assign
+      if (!agentAssigned && !taskAssigned) {
+        // free agent & free task (or pool has capacity) -> assign
         const assignment = { id: `assign_${p.task.id}_${p.agentId}_${Game ? Game.time : 0}`, createdTick: Game ? Game.time : 0, data: { taskId: p.task.id, agentId: p.agentId } };
         wm.set('assignments', assignment);
-        p.task.data.assignee = p.agentId;
-        p.task.data.status = 'assigned';
-        wm.set('tasks', p.task);
+
+        // handle pooled assignment
+        const meta = p.task.data && p.task.data.meta ? p.task.data.meta : {};
+        const jobId = (typeof p.task.data.createdFrom !== 'undefined' && p.task.data.createdFrom) ? p.task.data.createdFrom : (meta.jobId || (meta.meta && meta.meta.jobId) || null);
+        const pool = jobId ? poolByJobId.get(jobId) : null;
+        if (pool) {
+          p.task.data.assignees = p.task.data.assignees || [];
+          p.task.data.assignees.push(p.agentId);
+          p.task.data.assignee = p.task.data.assignees[0];
+          p.task.data.status = 'assigned';
+          wm.set('tasks', p.task);
+          if (this.kernel && this.kernel.has && this.kernel.has('haulerPool')) {
+            try { this.kernel.get('haulerPool').assignMember(pool.id, p.agentId); } catch (e) { /* ignore pool errors */ }
+          }
+        } else {
+          p.task.data.assignee = p.agentId;
+          p.task.data.status = 'assigned';
+          wm.set('tasks', p.task);
+        }
+
         assignedAgents.add(p.agentId);
-        assignedTasks.add(p.task.id);
-        // mark assigned tasks so preempted/old tasks aren't immediately reassigned
-        // (preemption pass blocks previous tasks explicitly)
+        // if pool has capacity, do not block other agents unless capacity reached
+        assignedCountByTask[p.task.id] = (assignedCountByTask[p.task.id] || 0) + 1;
+        const remaining = allowedSlotsForTask(p.task);
+        if (remaining <= 0) assignedTasks.add(p.task.id);
+
         assignments.push(assignment);
         // increment local count for balancing
         assignmentCounts[p.agentId] = (assignmentCounts[p.agentId] || 0) + 1;
@@ -287,9 +376,25 @@ export default class Scheduler {
 
           const assignment = { id: `assign_${p.task.id}_${p.agentId}_${Game ? Game.time : 0}`, createdTick: Game ? Game.time : 0, data: { taskId: p.task.id, agentId: p.agentId } };
           wm.set('assignments', assignment);
-          p.task.data.assignee = p.agentId;
-          p.task.data.status = 'assigned';
-          wm.set('tasks', p.task);
+
+          // handle pooled assignment similarly
+          const meta2 = p.task.data && p.task.data.meta ? p.task.data.meta : {};
+          const jobId2 = (typeof p.task.data.createdFrom !== 'undefined' && p.task.data.createdFrom) ? p.task.data.createdFrom : (meta2.jobId || (meta2.meta && meta2.meta.jobId) || null);
+          const pool2 = jobId2 ? poolByJobId.get(jobId2) : null;
+          if (pool2) {
+            p.task.data.assignees = p.task.data.assignees || [];
+            p.task.data.assignees.push(p.agentId);
+            p.task.data.assignee = p.task.data.assignees[0];
+            p.task.data.status = 'assigned';
+            wm.set('tasks', p.task);
+            if (this.kernel && this.kernel.has && this.kernel.has('haulerPool')) {
+              try { this.kernel.get('haulerPool').assignMember(pool2.id, p.agentId); } catch (e) { /* ignore pool errors */ }
+            }
+          } else {
+            p.task.data.assignee = p.agentId;
+            p.task.data.status = 'assigned';
+            wm.set('tasks', p.task);
+          }
 
           assignedAgents.add(p.agentId);
           assignedTasks.add(p.task.id);

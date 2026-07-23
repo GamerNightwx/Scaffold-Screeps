@@ -19,6 +19,16 @@ import TaskEngine from './tasks/TaskEngine.js';
 import Scheduler from './scheduler/Scheduler.js';
 import AgentRuntime from './agent/AgentRuntime.js';
 import CommandEngine from './command/CommandEngine.js';
+import RoadPlanner from './RoadPlanner.js';
+import DefensePlanner from './DefensePlanner.js';
+import * as BlueprintPlannerModule from './BlueprintPlanner.js';
+import BlueprintManager from './BlueprintManager.js';
+import ConstructionManager from './ConstructionManager.js';
+import ConstructionRunner from './ConstructionRunner.js';
+import ConstructionExecutor from './ConstructionExecutor.js';
+import ConstructionAgent from './ConstructionAgent.js';
+import OverlaySubsystem from './OverlaySubsystem.js';
+import Logger from './Logger.js';
 
 // Singleton global para preservar estado entre ticks
 let kernelInstance = null;
@@ -39,7 +49,26 @@ function initKernel() {
       taskEngine: (k) => new TaskEngine(k),
       scheduler: (k) => new Scheduler(k),
       agentRuntime: (k) => new AgentRuntime(k),
-      commandEngine: (k) => new CommandEngine(k)
+      commandEngine: (k) => new CommandEngine(k),
+      // Road planner: collects hauler path samples and proposes road construction
+      roadPlanner: (k) => new RoadPlanner(k),
+      defensePlanner: (k) => new DefensePlanner(k),
+      blueprintPlanner: (k) => {
+        // BlueprintPlanner exports tick() function; wrap with kernel context
+        return {
+          tick() {
+            return BlueprintPlannerModule.tick(k.get('workingMemory'));
+          }
+        };
+      },
+      // Overlay subsystem: render visualOverlays -> visualShapes each tick
+      overlayRenderer: (k) => new OverlaySubsystem(k),
+      // Blueprint manager: convert blueprints -> constructionPlans
+      blueprintManager: (k) => BlueprintManager(k),
+      constructionManager: (k) => new ConstructionManager(k),
+      constructionRunner: (k) => new ConstructionRunner(k),
+      constructionExecutor: (k) => new ConstructionExecutor(k),
+      constructionAgent: (k) => new ConstructionAgent(k)
     }
   });
 
@@ -57,15 +86,15 @@ export function loop() {
 
     if (config.logging.enabled && Game.time % config.logging.metricsInterval === 0) {
       const metrics = kernel.metrics();
-      console.log(`[T${Game.time}] CPU: ${metrics.cpuUsed.toFixed(2)}/${metrics.cpuBudget} (reserve: ${metrics.cpuRemaining.toFixed(2)})`);
+      Logger.log(`[T${Game.time}] CPU: ${metrics.cpuUsed.toFixed(2)}/${metrics.cpuBudget} (reserve: ${metrics.cpuRemaining.toFixed(2)})`);
     }
 
     if (!result.success && result.errors.length > 0) {
-      console.warn(`[T${Game.time}] Errors in tick:`, result.errors);
+      Logger.warn(`[T${Game.time}] Errors in tick:`, result.errors);
     }
   } catch (err) {
-    console.error('[CRITICAL] Main loop error:', err.message);
-    console.error(err.stack);
+    Logger.error('[CRITICAL] Main loop error:', err.message);
+    Logger.error(err.stack);
   }
 }
 
