@@ -3,6 +3,8 @@
 // - Creates constructionSites (jobs) at a rate-limited pace
 // - Idempotent: does not recreate existing sites for the same plan
 
+import Logger from './Logger.js';
+
 export default class ConstructionManager {
   constructor(kernel) {
     this.kernel = kernel;
@@ -65,6 +67,10 @@ export default class ConstructionManager {
       } catch (e) {
         // ignore per-plan errors
       }
+    }
+
+    if (created.length > 0 && typeof Game !== 'undefined' && Game.time) {
+      Logger.log(`[T${Game.time}] ConstructionManager: Created ${created.length} construction site(s)`);
     }
 
     return created;

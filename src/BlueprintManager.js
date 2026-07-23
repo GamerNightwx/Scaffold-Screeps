@@ -4,6 +4,8 @@
 // - Avoids duplicates by checking existing constructionPlans for same room/x,y,type
 // - Rate-limits creations per tick via config param (maxPerTick)
 
+import Logger from './Logger.js';
+
 async function _readFromWM(wm, key) {
   if (!wm) return [];
   if (typeof wm.list === 'function') return wm.list(key) || [];
@@ -57,6 +59,10 @@ export async function tick(kernelOrWM, options = {}) {
       existingMap.add(key);
       created++;
     }
+  }
+
+  if (created > 0 && typeof Game !== 'undefined' && Game.time) {
+    Logger.log(`[T${Game.time}] BlueprintManager: Created ${created} construction plans`);
   }
 
   return created;

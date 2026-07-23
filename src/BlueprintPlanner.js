@@ -1,5 +1,6 @@
 import { generateBlueprint, persistBlueprint } from './BlueprintEngine.js';
 import { validateAll } from './PlacementValidator.js';
+import Logger from './Logger.js';
 
 // BlueprintPlanner: small tick-based planner that generates blueprints per-room and
 // persists them into WorkingMemory. Designed for test-safe operation when Game APIs
@@ -71,6 +72,13 @@ export async function tick(workingMemory, room, rcl = 1) {
 
   // Persist into WM using persistBlueprint (it knows several WM APIs)
   const entry = persistBlueprint(workingMemory, room, rcl, blueprint);
+  
+  if (entry && entry.blueprint && entry.blueprint.placements) {
+    const count = entry.blueprint.placements.length;
+    if (typeof Game !== 'undefined' && Game.time) {
+      Logger.log(`[T${Game.time}] BlueprintPlanner: Generated blueprint for ${room} (${count} placements, valid=${blueprint.valid})`);
+    }
+  }
 
   // Also create a visual overlay entry in WM for review (versioned)
   const overlayEntry = {

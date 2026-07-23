@@ -257,6 +257,13 @@ export default class Kernel {
         planMetrics
       };
 
+      // Debug logging for construction pipeline
+      if (planMetrics && (planMetrics.blueprints > 0 || planMetrics.constructionPlans > 0 || planMetrics.sitesPlanned > 0 || planMetrics.sitesCreated > 0)) {
+       if (typeof Game !== 'undefined' && Game.time && Game.time % 10 === 0) {
+         Logger.log(`[T${Game.time}] Construction pipeline: blueprints=${planMetrics.blueprints}, plans=${planMetrics.constructionPlans}, sitesPlanned=${planMetrics.sitesPlanned}, sitesCreated=${planMetrics.sitesCreated}, shapes=${planMetrics.visualShapes || 0}`);
+       }
+      }
+
       // clear temp
       this._tickTemp = null;
 
