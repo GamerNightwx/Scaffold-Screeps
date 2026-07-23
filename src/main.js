@@ -29,6 +29,8 @@ import ConstructionExecutor from './ConstructionExecutor.js';
 import ConstructionAgent from './ConstructionAgent.js';
 import OverlaySubsystem from './OverlaySubsystem.js';
 import Logger from './Logger.js';
+import { logDiagnostics } from './PipelineDiagnostic.js';
+import { bootstrapGame } from './GameBootstrap.js';
 
 // Singleton global para preservar estado entre ticks
 let kernelInstance = null;
@@ -82,11 +84,22 @@ function initKernel() {
 export function loop() {
   try {
     const kernel = initKernel();
+    
+    // Bootstrap game state on first run (or when needed)
+    if (typeof Game !== 'undefined' && Game.time === 1) {
+      bootstrapGame(kernel);
+    }
+    
     const result = kernel.tick();
 
     if (config.logging.enabled && Game.time % config.logging.metricsInterval === 0) {
       const metrics = kernel.metrics();
       Logger.log(`[T${Game.time}] CPU: ${metrics.cpuUsed.toFixed(2)}/${metrics.cpuBudget} (reserve: ${metrics.cpuRemaining.toFixed(2)})`);
+    }
+
+    // Diagnostic every 20 ticks
+    if (typeof Game !== 'undefined' && Game.time % 20 === 0) {
+      logDiagnostics(kernel);
     }
 
     if (!result.success && result.errors.length > 0) {
